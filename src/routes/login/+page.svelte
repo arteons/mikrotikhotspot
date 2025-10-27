@@ -1,102 +1,78 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { page } from '$app/stores';
 
-  let email = '';
-  let whatsapp = '';
   let mac = '';
   let ip = '';
   let link_login = '';
+  let email = '';
+  let whatsapp = '';
 
-  // On load, parse query params passed from MikroTik redirect
+  // Grab MikroTik query params: ?mac=...&ip=...&link-login=...
   onMount(() => {
     const params = new URLSearchParams(window.location.search);
     mac = params.get('mac') || '';
     ip = params.get('ip') || '';
     link_login = params.get('link-login') || '';
-
-    console.log('Captured params:', { mac, ip, link_login });
   });
-
-  async function handleSubmit(e: SubmitEvent) {
-    e.preventDefault();
-
-    const formData = new FormData();
-    formData.append('email', email);
-    formData.append('whatsapp', whatsapp);
-    formData.append('mac', mac);
-    formData.append('ip', ip);
-    formData.append('link_login', link_login);
-
-    try {
-      const res = await fetch('/api/register', {
-        method: 'POST',
-        body: formData
-      });
-
-      const contentType = res.headers.get('content-type');
-      if (contentType && contentType.includes('text/html')) {
-        // 🔥 MikroTik auto-login HTML — replace current page
-        const html = await res.text();
-        document.open();
-        document.write(html);
-        document.close();
-        return;
-      }
-
-      const data = await res.json();
-      if (!data.success) {
-        alert('Registration failed: ' + (data.error || 'Unknown error'));
-      }
-    } catch (err) {
-      console.error('Error:', err);
-      alert('Connection error — please try again.');
-    }
-  }
 </script>
 
-<svelte:head>
-  <title>Wi-Fi Login Portal</title>
-</svelte:head>
-
-<main class="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4">
-  <div class="bg-white p-8 rounded-2xl shadow-lg w-full max-w-md text-center">
-    <h1 class="text-2xl font-bold mb-4">Connect to Wi-Fi</h1>
-    <p class="text-gray-600 mb-6">
-      Please enter your email or WhatsApp number to access the internet.
+<!-- Simple captive form -->
+<div class="flex flex-col items-center justify-center min-h-screen bg-gray-100">
+  <div class="bg-white rounded-xl shadow-lg p-8 w-full max-w-md">
+    <h1 class="text-2xl font-semibold mb-4 text-center text-gray-800">
+      Welcome to Hotspot
+    </h1>
+    <p class="text-gray-500 text-center mb-6">
+      Please enter your contact information to connect
     </p>
 
-    <form on:submit={handleSubmit} class="flex flex-col gap-4">
+    <!-- Direct form POST to /api/register -->
+    <form action="/api/register" method="post" class="space-y-4">
       <input
-        type="email"
-        placeholder="Email address"
-        bind:value={email}
-        required
-        class="border rounded-lg p-3 focus:outline-none focus:ring focus:ring-blue-200"
+        type="hidden"
+        name="mac"
+        bind:value={mac}
       />
       <input
-        type="text"
-        placeholder="WhatsApp number (optional)"
-        bind:value={whatsapp}
-        class="border rounded-lg p-3 focus:outline-none focus:ring focus:ring-blue-200"
+        type="hidden"
+        name="ip"
+        bind:value={ip}
+      />
+      <input
+        type="hidden"
+        name="link_login"
+        bind:value={link_login}
       />
 
-      <input type="hidden" name="mac" value={mac} />
-      <input type="hidden" name="ip" value={ip} />
-      <input type="hidden" name="link_login" value={link_login} />
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+        <input
+          type="email"
+          name="email"
+          bind:value={email}
+          placeholder="your@email.com"
+          required
+          class="w-full border border-gray-300 rounded-md p-2 focus:outline-none focus:ring focus:ring-indigo-200"
+        />
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">WhatsApp</label>
+        <input
+          type="text"
+          name="whatsapp"
+          bind:value={whatsapp}
+          placeholder="+62..."
+          class="w-full border border-gray-300 rounded-md p-2 focus:outline-none focus:ring focus:ring-indigo-200"
+        />
+      </div>
 
       <button
         type="submit"
-        class="bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition"
+        class="w-full bg-indigo-600 text-white py-2 rounded-md hover:bg-indigo-700 transition"
       >
         Connect
       </button>
     </form>
   </div>
-</main>
-
-<style>
-  main {
-    font-family: system-ui, sans-serif;
-  }
-</style>
+</div>
