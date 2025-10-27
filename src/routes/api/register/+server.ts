@@ -20,29 +20,34 @@ export async function POST({ request }) {
       link_login = form.get('link_login')?.toString() || '';
     }
 
-    if (!email || !ip || !link_login)
+    if (!email || !ip || !link_login) {
       return json({ success: false, error: 'Missing required parameters' }, { status: 400 });
+    }
 
-    // 🗂️ insert contact
+    // 🗂️ Insert contact into Supabase
     const supabase = createClient(
       publicEnv.PUBLIC_SUPABASE_URL!,
       privateEnv.PRIVATE_SUPABASE_SERVICE_KEY!
     );
-    await supabase.from('cat_hotspot_contacts').insert([{ email, whatsapp, mac, ip }]);
 
-    // 🔐 MikroTik credentials
+    await supabase
+      .from('cat_hotspot_contacts')
+      .upsert([{ email, whatsapp, mac, ip }], { onConflict: 'email' });
+
+    // 🔐 MikroTik REST credentials
     const host = privateEnv.MIKROTIK_HOST!;
     const auth = Buffer.from(`${privateEnv.MIKROTIK_USER}:${privateEnv.MIKROTIK_PASS}`).toString('base64');
 
-    // ➕ create or update hotspot user
+    // ➕ Create or update hotspot user
     const userPayload = {
       name: email,
-      password: email, // use email for both username and password for simplicity
+      password: email,
       profile: 'default',
       comment: 'Auto captive portal registration'
     };
 
-    const res = await fetch(`http://${host}:85/rest/ip/hotspot/user`, {
+    // Try create user first
+    let res = await fetch(`http://${host}:85/rest/ip/hotspot/user`, {
       method: 'PUT',
       headers: {
         Authorization: `Basic ${auth}`,
@@ -51,33 +56,45 @@ export async function POST({ request }) {
       body: JSON.stringify(userPayload)
     });
 
+    // If user already exists, update instead
     if (!res.ok) {
-      console.error(await res.text());
-      throw new Error('MikroTik user creation failed');
+      const text = await res.text();
+      if (text.includes('already have user')) {
+        await fetch(`http://${host}:85/rest/ip/hotspot/user/${encodeURIComponent(email)}`, {
+          method: 'PATCH',
+          headers: {
+            Authorization: `Basic ${auth}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ password: email })
+        });
+      } else {
+        console.error('❌ MikroTik error:', text);
+        throw new Error('Failed to create/update MikroTik user');
+      }
     }
 
-    // 🔁 auto-login via hidden form
-    const username = encodeURIComponent(email);
-    const password = encodeURIComponent(email);
-
+    // 🔁 Auto-login via hidden HTML form
     return new Response(
       `
       <html>
         <body onload="document.forms[0].submit()">
           <form action="${link_login}" method="post">
-            <input type="hidden" name="username" value="${username}">
-            <input type="hidden" name="password" value="${password}">
+            <input type="hidden" name="username" value="${email}">
+            <input type="hidden" name="password" value="${email}">
             <input type="hidden" name="popup" value="true">
             <noscript><input type="submit" value="Continue"></noscript>
           </form>
-          <p style="text-align:center;font-family:sans-serif">Logging you in...</p>
+          <p style="text-align:center;font-family:sans-serif">
+            Logging you in securely...
+          </p>
         </body>
       </html>
       `,
       { headers: { 'Content-Type': 'text/html' } }
     );
   } catch (err) {
-    console.error('💥', err);
+    console.error('💥 Error in register handler:', err);
     return json({ success: false, error: err.message }, { status: 500 });
   }
 }
