@@ -1,115 +1,79 @@
 <script lang="ts">
     import { onMount } from 'svelte';
-    import { writable } from 'svelte/store';
   
-    const email = writable('');
-    const whatsapp = writable('');
-    const mac = writable('');
-    const ip = writable('');
-    const linkLogin = writable('');
-    const status = writable<'idle' | 'loading' | 'success' | 'error'>('idle');
-    const message = writable('');
+    let mac = '';
+    let ip = '';
+    let link_login = '';
+    let email = '';
+    let whatsapp = '';
   
-    // Parse Mikrotik query params: ?mac=&ip=&link-login=
+    // Grab MikroTik query params: ?mac=...&ip=...&link-login=...
     onMount(() => {
       const params = new URLSearchParams(window.location.search);
-      mac.set(params.get('mac') || '');
-      ip.set(params.get('ip') || '');
-      linkLogin.set(params.get('link-login') || '');
+      mac = params.get('mac') || '';
+      ip = params.get('ip') || '';
+      link_login = params.get('link-login') || '';
     });
-  
-    async function handleSubmit(event: SubmitEvent) {
-      event.preventDefault();
-      status.set('loading');
-      message.set('');
-  
-      try {
-        const payload = {
-          email: $email,
-          whatsapp: $whatsapp,
-          mac: $mac,
-          ip: $ip,
-          link_login: $linkLogin
-        };
-  
-        const res = await fetch('/api/register', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-  
-        if (res.redirected) {
-          // Router redirected directly (successful Mikrotik login)
-          window.location.href = res.url;
-          return;
-        }
-  
-        const data = await res.json();
-        if (data.success) {
-          status.set('success');
-          message.set('Registration successful! Redirecting...');
-          // Optional: redirect manually if API doesn’t
-          if ($linkLogin) {
-            window.location.href = `${$linkLogin}?username=${encodeURIComponent($email || $whatsapp)}&password=${encodeURIComponent($mac)}`;
-          }
-        } else {
-          status.set('error');
-          message.set(data.error || 'Registration failed');
-        }
-      } catch (err) {
-        console.error(err);
-        status.set('error');
-        message.set('Unexpected error, please try again');
-      }
-    }
   </script>
   
-  <main class="min-h-screen flex flex-col items-center justify-center bg-gray-100 p-6">
-    <div class="bg-white rounded-2xl shadow-lg p-8 w-full max-w-md">
-      <h1 class="text-2xl font-bold mb-4 text-center">Wi-Fi Access Portal</h1>
-      <p class="text-gray-600 mb-6 text-center">
-        Please enter your email or WhatsApp number to get internet access.
+  <!-- Simple captive form -->
+  <div class="flex flex-col items-center justify-center min-h-screen bg-gray-100">
+    <div class="bg-white rounded-xl shadow-lg p-8 w-full max-w-md">
+      <h1 class="text-2xl font-semibold mb-4 text-center text-gray-800">
+        Welcome to Hotspot
+      </h1>
+      <p class="text-gray-500 text-center mb-6">
+        Please enter your contact information to connect
       </p>
   
-      <form on:submit={handleSubmit} class="flex flex-col gap-4">
-        <label class="flex flex-col">
-          <span class="text-sm text-gray-700 mb-1">Email</span>
+      <!-- Direct form POST to /api/register -->
+      <form action="/api/register" method="post" class="space-y-4">
+        <input
+          type="hidden"
+          name="mac"
+          bind:value={mac}
+        />
+        <input
+          type="hidden"
+          name="ip"
+          bind:value={ip}
+        />
+        <input
+          type="hidden"
+          name="link_login"
+          bind:value={link_login}
+        />
+  
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
           <input
             type="email"
-            placeholder="you@example.com"
-            bind:value={$email}
-            class="border rounded-lg p-2"
+            name="email"
+            bind:value={email}
+            placeholder="your@email.com"
+            required
+            class="w-full border border-gray-300 rounded-md p-2 focus:outline-none focus:ring focus:ring-indigo-200"
           />
-        </label>
+        </div>
   
-        <label class="flex flex-col">
-          <span class="text-sm text-gray-700 mb-1">WhatsApp</span>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">WhatsApp</label>
           <input
             type="text"
+            name="whatsapp"
+            bind:value={whatsapp}
             placeholder="+62..."
-            bind:value={$whatsapp}
-            class="border rounded-lg p-2"
+            class="w-full border border-gray-300 rounded-md p-2 focus:outline-none focus:ring focus:ring-indigo-200"
           />
-        </label>
+        </div>
   
         <button
           type="submit"
-          class="bg-blue-600 text-white rounded-lg py-2 mt-2 hover:bg-blue-700 disabled:opacity-60"
-          disabled={$status === 'loading'}
+          class="w-full bg-indigo-600 text-white py-2 rounded-md hover:bg-indigo-700 transition"
         >
-          {#if $status === 'loading'}
-            Registering...
-          {:else}
-            Connect to Wi-Fi
-          {/if}
+          Connect
         </button>
       </form>
-  
-      {#if $message}
-        <p class="mt-4 text-center text-sm { $status === 'error' ? 'text-red-600' : 'text-green-600' }">
-          {$message}
-        </p>
-      {/if}
     </div>
-  </main>
+  </div>
   
