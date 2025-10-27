@@ -20,11 +20,5 @@ The backend automatically creates the user on the router via REST and logs them 
 
 ## 🧩 Architecture Overview
 
-Device → MikroTik hotspot redirect
-→ SvelteKit portal (/)
-→ /api/register
-↳ Inserts contact into Supabase
-↳ Creates or updates MikroTik user (via REST)
-↳ Returns auto-login form → /login on MikroTik
-→ User is online
+Device → MikroTik hotspot redirect → SvelteKit portal → /api/register → Inserts contact into Supabase → Creates or updates MikroTik user (via REST) → Returns auto-login form → /login on MikroTik → User is online
 
