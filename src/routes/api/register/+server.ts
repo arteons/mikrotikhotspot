@@ -20,33 +20,50 @@ export async function POST({ request }) {
       link_login = form.get('link_login')?.toString() || '';
     }
 
+    // 🧩 Validate required params
     if (!email || !ip || !link_login) {
       return json({ success: false, error: 'Missing required parameters' }, { status: 400 });
     }
 
-    // 🗂️ Insert contact into Supabase
+    // 🗂️ Supabase insert (upsert by email)
     const supabase = createClient(
       publicEnv.PUBLIC_SUPABASE_URL!,
       privateEnv.PRIVATE_SUPABASE_SERVICE_KEY!
     );
 
-    await supabase
+    const { error: insertError } = await supabase
       .from('cat_hotspot_contacts')
-      .upsert([{ email, whatsapp, mac, ip }], { onConflict: 'email' });
+      .upsert(
+        [
+          {
+            email,
+            whatsapp,
+            mac,
+            ip,
+            created_at: new Date().toISOString()
+          }
+        ],
+        { onConflict: 'email' }
+      );
 
-    // 🔐 MikroTik REST credentials
+    if (insertError) {
+      console.error('⚠️ Supabase insert failed:', insertError.message);
+    } else {
+      console.log('✅ Supabase contact saved:', email);
+    }
+
+    // 🔐 MikroTik credentials
     const host = privateEnv.MIKROTIK_HOST!;
     const auth = Buffer.from(`${privateEnv.MIKROTIK_USER}:${privateEnv.MIKROTIK_PASS}`).toString('base64');
 
     // ➕ Create or update hotspot user
     const userPayload = {
       name: email,
-      password: email,
+      password: email, // simple: email = username & password
       profile: 'default',
       comment: 'Auto captive portal registration'
     };
 
-    // Try create user first
     let res = await fetch(`http://${host}:85/rest/ip/hotspot/user`, {
       method: 'PUT',
       headers: {
@@ -56,7 +73,7 @@ export async function POST({ request }) {
       body: JSON.stringify(userPayload)
     });
 
-    // If user already exists, update instead
+    // If user already exists, update password instead of failing
     if (!res.ok) {
       const text = await res.text();
       if (text.includes('already have user')) {
@@ -74,7 +91,7 @@ export async function POST({ request }) {
       }
     }
 
-    // 🔁 Auto-login via hidden HTML form
+    // 🔁 Auto-login redirect via hidden form
     return new Response(
       `
       <html>
