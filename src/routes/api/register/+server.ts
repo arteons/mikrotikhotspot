@@ -1,46 +1,40 @@
-import { json, redirect } from '@sveltejs/kit';
+import { json } from '@sveltejs/kit';
 import { env as publicEnv } from '$env/dynamic/public';
 import { env as privateEnv } from '$env/dynamic/private';
 import { createClient } from '@supabase/supabase-js';
 
 export async function POST({ request }) {
   try {
+    const contentType = request.headers.get('content-type') || '';
     let email, whatsapp, mac, ip, link_login;
 
-    // Detect JSON vs form submission
-    const contentType = request.headers.get('content-type') || '';
-
     if (contentType.includes('application/json')) {
-      const body = await request.json();
-      ({ email, whatsapp, mac, ip, link_login } = body);
+      const data = await request.json();
+      ({ email, whatsapp, mac, ip, link_login } = data);
     } else {
-      const body = await request.formData();
-      email = body.get('email')?.toString() || null;
-      whatsapp = body.get('whatsapp')?.toString() || null;
-      mac = body.get('mac')?.toString() || null;
-      ip = body.get('ip')?.toString() || null;
-      link_login = body.get('link_login')?.toString() || null;
+      const form = await request.formData();
+      email = form.get('email')?.toString() || '';
+      whatsapp = form.get('whatsapp')?.toString() || '';
+      mac = form.get('mac')?.toString() || '';
+      ip = form.get('ip')?.toString() || '';
+      link_login = form.get('link_login')?.toString() || '';
     }
 
-    // Validate required fields
-    if (!mac || !ip) {
-      return json({ success: false, error: 'Missing MAC or IP' }, { status: 400 });
-    }
+    if (!mac || !ip || !link_login)
+      return json({ success: false, error: 'Missing required parameters' }, { status: 400 });
 
-    // Supabase insert
+    // insert contact
     const supabase = createClient(
       publicEnv.PUBLIC_SUPABASE_URL!,
       privateEnv.PRIVATE_SUPABASE_SERVICE_KEY!
     );
     await supabase.from('cat_hotspot_contacts').insert([{ email, whatsapp, mac, ip }]);
 
-    // MikroTik config
-    const host = privateEnv.MIKROTIK_HOST;
+    // create hotspot user
+    const host = privateEnv.MIKROTIK_HOST!;
     const auth = Buffer.from(`${privateEnv.MIKROTIK_USER}:${privateEnv.MIKROTIK_PASS}`).toString('base64');
-    if (!host) throw new Error('Missing MIKROTIK_HOST');
 
-    // Create user on MikroTik
-    const userPayload = {
+    const user = {
       name: email || whatsapp || mac,
       password: mac,
       'mac-address': mac,
@@ -48,52 +42,42 @@ export async function POST({ request }) {
       comment: 'Auto captive portal registration'
     };
 
-    const createUser = await fetch(`http://${host}:85/rest/ip/hotspot/user`, {
+    const res = await fetch(`http://${host}:85/rest/ip/hotspot/user`, {
       method: 'PUT',
       headers: {
         Authorization: `Basic ${auth}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(userPayload)
+      body: JSON.stringify(user)
     });
 
-    if (!createUser.ok) {
-      const errText = await createUser.text();
-      console.error('❌ MikroTik create error:', errText);
-      throw new Error(errText);
+    if (!res.ok) {
+      console.error(await res.text());
+      throw new Error('MikroTik user creation failed');
     }
 
-    // Auto-login
-    const activePayload = {
-      user: email || whatsapp || mac,
-      address: ip,
-      'mac-address': mac
-    };
+    // instead of /active/add → return HTML form that posts to router /login
+    const username = encodeURIComponent(email || whatsapp || mac);
+    const password = encodeURIComponent(mac);
 
-    const activeResp = await fetch(`http://${host}:85/rest/ip/hotspot/active/add`, {
-      method: 'PUT',
-      headers: {
-        Authorization: `Basic ${auth}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(activePayload)
-    });
-
-    if (!activeResp.ok) {
-      console.warn('⚠️ Auto-login failed:', await activeResp.text());
-    }
-
-    // Redirect to MikroTik login if needed
-    if (link_login) {
-      throw redirect(
-        302,
-        `${link_login}?username=${encodeURIComponent(email || whatsapp || mac)}&password=${encodeURIComponent(mac)}`
-      );
-    }
-
-    return json({ success: true });
+    return new Response(
+      `
+      <html>
+        <body onload="document.forms[0].submit()">
+          <form action="${link_login}" method="post">
+            <input type="hidden" name="username" value="${username}">
+            <input type="hidden" name="password" value="${password}">
+            <input type="hidden" name="popup" value="true">
+            <noscript><input type="submit" value="Continue"></noscript>
+          </form>
+          <p>Logging you in...</p>
+        </body>
+      </html>
+      `,
+      { headers: { 'Content-Type': 'text/html' } }
+    );
   } catch (err) {
-    console.error('💥 Error in register handler:', err);
+    console.error('💥', err);
     return json({ success: false, error: err.message }, { status: 500 });
   }
 }
