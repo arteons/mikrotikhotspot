@@ -1,12 +1,14 @@
 import { createServerClient } from '@supabase/ssr';
 import type { Handle } from '@sveltejs/kit';
-import { PUBLIC_SUPABASE_URL, PUBLIC_SUPABASE_ANON_KEY } from '$env/static/public';
+import { env } from '$env/dynamic/public';
 
 export const handle: Handle = async ({ event, resolve }) => {
-  // Create a Supabase client for every request
+  const supabaseUrl = env.PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = env.PUBLIC_SUPABASE_ANON_KEY;
+
   event.locals.supabase = createServerClient(
-    PUBLIC_SUPABASE_URL,
-    PUBLIC_SUPABASE_ANON_KEY,
+    supabaseUrl,
+    supabaseAnonKey,
     {
       cookies: {
         get: (key) => event.cookies.get(key),
@@ -15,12 +17,9 @@ export const handle: Handle = async ({ event, resolve }) => {
         remove: (key, options) =>
           event.cookies.delete(key, { ...options, path: '/' })
       },
-      global: {
-        fetch: event.fetch
-      }
+      global: { fetch: event.fetch }
     }
   );
 
-  // Continue with request handling
   return resolve(event);
 };
