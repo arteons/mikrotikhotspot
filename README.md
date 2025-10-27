@@ -1,38 +1,30 @@
-# sv
+# MikroTik Captive Portal – SvelteKit + Supabase Integration
 
-Everything you need to build a Svelte project, powered by [`sv`](https://github.com/sveltejs/cli).
+A modern custom captive portal for MikroTik Hotspot networks, built with **SvelteKit**, **Supabase**, and **MikroTik REST API**.  
+Users are redirected from the router’s hotspot login page to this external portal, where they register with their email.  
+The backend automatically creates the user on the router via REST and logs them in seamlessly.
 
-## Creating a project
+---
 
-If you're seeing this, you've probably already done this step. Congrats!
+## ⚙️ Features
 
-```sh
-# create a new project in the current directory
-npx sv create
+✅ Custom landing page (SvelteKit)  
+✅ Automatic MikroTik user creation via REST API  
+✅ Auto-login without showing the original MikroTik login.html  
+✅ Email-based single sign-on (one email = one user, multiple devices supported)  
+✅ Supabase integration for contact logging (email, MAC, IP, etc.)  
+✅ Compatible with Coolify, Docker, or direct Node.js deployment  
+✅ Future-ready for social logins (Google/Facebook)
 
-# create a new project in my-app
-npx sv create my-app
-```
+---
 
-## Developing
+## 🧩 Architecture Overview
 
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
+Device → MikroTik hotspot redirect
+→ SvelteKit portal (/)
+→ /api/register
+↳ Inserts contact into Supabase
+↳ Creates or updates MikroTik user (via REST)
+↳ Returns auto-login form → /login on MikroTik
+→ User is online
 
-```sh
-npm run dev
-
-# or start the server and open the app in a new browser tab
-npm run dev -- --open
-```
-
-## Building
-
-To create a production version of your app:
-
-```sh
-npm run build
-```
-
-You can preview the production build with `npm run preview`.
-
-> To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.
