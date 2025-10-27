@@ -1,91 +1,114 @@
-<script>
-    import { onMount } from 'svelte';
-    import { goto } from '$app/navigation';
-  
-    let email = '';
-    let whatsapp = '';
-    let mac = '';
-    let ip = '';
-    let linkLogin = '';
-  
-    let loading = false;
-    let message = '';
-  
-    // When page loads, capture MikroTik query params
-    onMount(() => {
-      const params = new URLSearchParams(window.location.search);
-      mac = params.get('mac') || '';
-      ip = params.get('ip') || '';
-      linkLogin = params.get('link-login') || '';
-    });
-  
-    async function handleSubmit() {
-      if (!email && !whatsapp) {
-        message = 'Please enter your email or WhatsApp number.';
+<script lang="ts">
+  import { onMount } from 'svelte';
+  import { writable } from 'svelte/store';
+
+  const email = writable('');
+  const whatsapp = writable('');
+  const mac = writable('');
+  const ip = writable('');
+  const linkLogin = writable('');
+  const status = writable<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const message = writable('');
+
+  // Parse Mikrotik query params: ?mac=&ip=&link-login=
+  onMount(() => {
+    const params = new URLSearchParams(window.location.search);
+    mac.set(params.get('mac') || '');
+    ip.set(params.get('ip') || '');
+    linkLogin.set(params.get('link-login') || '');
+  });
+
+  async function handleSubmit(event: SubmitEvent) {
+    event.preventDefault();
+    status.set('loading');
+    message.set('');
+
+    try {
+      const payload = {
+        email: $email,
+        whatsapp: $whatsapp,
+        mac: $mac,
+        ip: $ip,
+        link_login: $linkLogin
+      };
+
+      const res = await fetch('/api/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (res.redirected) {
+        // Router redirected directly (successful Mikrotik login)
+        window.location.href = res.url;
         return;
       }
-  
-      loading = true;
-      message = '';
-  
-      try {
-        const res = await fetch('/api/register', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, whatsapp, mac, ip })
-        });
-  
-        const data = await res.json();
-  
-        if (data.success) {
-          // redirect to MikroTik login
-          const username = mac; // using MAC as username
-          const password = mac; // using MAC as password
-          const redirectUrl = `${linkLogin}?username=${username}&password=${password}`;
-          message = 'Logging you in...';
-          setTimeout(() => goto(redirectUrl), 1000);
-        } else {
-          message = data.message;
+
+      const data = await res.json();
+      if (data.success) {
+        status.set('success');
+        message.set('Registration successful! Redirecting...');
+        // Optional: redirect manually if API doesn’t
+        if ($linkLogin) {
+          window.location.href = `${$linkLogin}?username=${encodeURIComponent($email || $whatsapp)}&password=${encodeURIComponent($mac)}`;
         }
-      } catch (err) {
-        console.error(err);
-        message = 'Network error — please try again.';
+      } else {
+        status.set('error');
+        message.set(data.error || 'Registration failed');
       }
-  
-      loading = false;
+    } catch (err) {
+      console.error(err);
+      status.set('error');
+      message.set('Unexpected error, please try again');
     }
-  </script>
-  
-  <div class="min-h-screen flex flex-col items-center justify-center bg-gray-100 p-6">
-    <div class="bg-white p-6 rounded-2xl shadow-md w-full max-w-sm">
-      <h1 class="text-xl font-semibold mb-4 text-center">Wi-Fi Access Portal</h1>
-  
-      <form on:submit|preventDefault={handleSubmit} class="flex flex-col gap-3">
+  }
+</script>
+
+<main class="min-h-screen flex flex-col items-center justify-center bg-gray-100 p-6">
+  <div class="bg-white rounded-2xl shadow-lg p-8 w-full max-w-md">
+    <h1 class="text-2xl font-bold mb-4 text-center">Wi-Fi Access Portal</h1>
+    <p class="text-gray-600 mb-6 text-center">
+      Please enter your email or WhatsApp number to get internet access.
+    </p>
+
+    <form on:submit={handleSubmit} class="flex flex-col gap-4">
+      <label class="flex flex-col">
+        <span class="text-sm text-gray-700 mb-1">Email</span>
         <input
           type="email"
-          placeholder="Enter your email"
-          bind:value={email}
-          class="border p-2 rounded"
+          placeholder="you@example.com"
+          bind:value={$email}
+          class="border rounded-lg p-2"
         />
+      </label>
+
+      <label class="flex flex-col">
+        <span class="text-sm text-gray-700 mb-1">WhatsApp</span>
         <input
-          type="tel"
-          placeholder="WhatsApp number (optional)"
-          bind:value={whatsapp}
-          class="border p-2 rounded"
+          type="text"
+          placeholder="+62..."
+          bind:value={$whatsapp}
+          class="border rounded-lg p-2"
         />
-  
-        <button
-          type="submit"
-          class="bg-blue-600 text-white p-2 rounded hover:bg-blue-700 disabled:opacity-50"
-          disabled={loading}
-        >
-          {loading ? 'Connecting...' : 'Connect'}
-        </button>
-      </form>
-  
-      {#if message}
-        <p class="text-center text-sm mt-4 text-gray-600">{message}</p>
-      {/if}
-    </div>
+      </label>
+
+      <button
+        type="submit"
+        class="bg-blue-600 text-white rounded-lg py-2 mt-2 hover:bg-blue-700 disabled:opacity-60"
+        disabled={$status === 'loading'}
+      >
+        {#if $status === 'loading'}
+          Registering...
+        {:else}
+          Connect to Wi-Fi
+        {/if}
+      </button>
+    </form>
+
+    {#if $message}
+      <p class="mt-4 text-center text-sm { $status === 'error' ? 'text-red-600' : 'text-green-600' }">
+        {$message}
+      </p>
+    {/if}
   </div>
-  
+</main>
