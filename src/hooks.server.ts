@@ -1,25 +1,11 @@
-import { createServerClient } from '@supabase/ssr';
+// src/hooks.server.ts
+import { createClient } from '@supabase/supabase-js';
+import { PUBLIC_SUPABASE_URL, PUBLIC_SUPABASE_ANON_KEY } from '$env/static/public';
 import type { Handle } from '@sveltejs/kit';
-import { env } from '$env/dynamic/public';
 
 export const handle: Handle = async ({ event, resolve }) => {
-  const supabaseUrl = env.PUBLIC_SUPABASE_URL;
-  const supabaseAnonKey = env.PUBLIC_SUPABASE_ANON_KEY;
+  // 💡 Simple client: no cookie handling, just direct database access
+  event.locals.supabase = createClient(PUBLIC_SUPABASE_URL, PUBLIC_SUPABASE_ANON_KEY);
 
-  event.locals.supabase = createServerClient(
-    supabaseUrl,
-    supabaseAnonKey,
-    {
-      cookies: {
-        get: (key) => event.cookies.get(key),
-        set: (key, value, options) =>
-          event.cookies.set(key, value, { ...options, path: '/' }),
-        remove: (key, options) =>
-          event.cookies.delete(key, { ...options, path: '/' })
-      },
-      global: { fetch: event.fetch }
-    }
-  );
-
-  return resolve(event);
+  return await resolve(event);
 };
