@@ -1,7 +1,7 @@
 import { json, redirect } from '@sveltejs/kit';
 import { createClient } from '@supabase/supabase-js';
-import { env } from '$env/dynamic/public'; // for PUBLIC_SUPABASE_ vars
-import { PRIVATE_SUPABASE_SERVICE_KEY, MIKROTIK_HOST, MIKROTIK_USER, MIKROTIK_PASS } from '$env/static/private';
+import { env as publicEnv } from '$env/dynamic/public';
+import { env as privateEnv } from '$env/dynamic/private';
 
 /**
  * Handles hotspot form submissions.
@@ -17,13 +17,13 @@ export async function POST({ request }) {
       return json({ success: false, error: 'Missing contact data' }, { status: 400 });
     }
 
-    // 1️⃣ Initialize Supabase client (Service role for write access)
+    // 1️⃣ Initialize Supabase client using service key
     const supabase = createClient(
-      env.PUBLIC_SUPABASE_URL,
-      PRIVATE_SUPABASE_SERVICE_KEY
+      publicEnv.PUBLIC_SUPABASE_URL,
+      privateEnv.PRIVATE_SUPABASE_SERVICE_KEY
     );
 
-    // 2️⃣ Insert into Supabase table
+    // 2️⃣ Insert into Supabase
     const { error } = await supabase.from('cat_hotspot_contacts').insert([
       {
         email,
@@ -38,9 +38,9 @@ export async function POST({ request }) {
       return json({ success: false, error: 'Database insert failed' }, { status: 500 });
     }
 
-    // 3️⃣ Create MikroTik hotspot user
-    const routerUrl = `http://${MIKROTIK_HOST}:85/rest/ip/hotspot/user`;
-    const auth = Buffer.from(`${MIKROTIK_USER}:${MIKROTIK_PASS}`).toString('base64');
+    // 3️⃣ Create MikroTik user via REST API
+    const routerUrl = `http://${privateEnv.MIKROTIK_HOST}:85/rest/ip/hotspot/user`;
+    const auth = Buffer.from(`${privateEnv.MIKROTIK_USER}:${privateEnv.MIKROTIK_PASS}`).toString('base64');
 
     const userAdd = await fetch(routerUrl, {
       method: 'PUT',
@@ -62,9 +62,17 @@ export async function POST({ request }) {
       return json({ success: false, error: 'MikroTik REST failed' }, { status: 502 });
     }
 
-    // 4️⃣ Redirect to MikroTik login for auto-login
+    // 4️⃣ Redirect user to MikroTik auto-login
     if (link_login) {
-      throw redirect(302, `${link_login}?username=${encodeURIComponent(email || whatsapp)}&password=${encodeURIComponent(mac || 'autogen')}`);
+      throw redirect(
+        302,
+        `${link_login}?username=${encodeURIComponent(email || whatsapp)}&password=${encodeURIComponent(mac || 'autogen')}`
+      );
     }
 
-    return jso
+    return json({ success: true });
+  } catch (err) {
+    console.error('Unhandled error:', err);
+    return json({ success: false, error: 'Internal server error' }, { status: 500 });
+  }
+}
