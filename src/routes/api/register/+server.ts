@@ -20,18 +20,18 @@ export async function POST({ request }) {
       link_login = form.get('link_login')?.toString() || '';
     }
 
-    // 🧩 Validate required params
+    // Validate required params
     if (!email || !ip || !link_login) {
       return json({ success: false, error: 'Missing required parameters' }, { status: 400 });
     }
 
-    // 🗂️ Supabase insert (upsert by email)
+    // Insert or update contact in Supabase
     const supabase = createClient(
       publicEnv.PUBLIC_SUPABASE_URL!,
       privateEnv.PRIVATE_SUPABASE_SERVICE_KEY!
     );
 
-    const { error: insertError } = await supabase
+    await supabase
       .from('cat_hotspot_contacts')
       .upsert(
         [
@@ -46,25 +46,19 @@ export async function POST({ request }) {
         { onConflict: 'email' }
       );
 
-    if (insertError) {
-      console.error('⚠️ Supabase insert failed:', insertError.message);
-    } else {
-      console.log('✅ Supabase contact saved:', email);
-    }
-
-    // 🔐 MikroTik credentials
+    // MikroTik credentials
     const host = privateEnv.MIKROTIK_HOST!;
     const auth = Buffer.from(`${privateEnv.MIKROTIK_USER}:${privateEnv.MIKROTIK_PASS}`).toString('base64');
 
-    // ➕ Create or update hotspot user
+    // Create or update hotspot user
     const userPayload = {
       name: email,
-      password: email, // simple: email = username & password
+      password: email, // use email for both username and password
       profile: 'default',
       comment: 'Auto captive portal registration'
     };
 
-    let res = await fetch(`http://${host}:85/rest/ip/hotspot/user`, {
+    const createResp = await fetch(`http://${host}:85/rest/ip/hotspot/user`, {
       method: 'PUT',
       headers: {
         Authorization: `Basic ${auth}`,
@@ -73,9 +67,8 @@ export async function POST({ request }) {
       body: JSON.stringify(userPayload)
     });
 
-    // If user already exists, update password instead of failing
-    if (!res.ok) {
-      const text = await res.text();
+    if (!createResp.ok) {
+      const text = await createResp.text();
       if (text.includes('already have user')) {
         await fetch(`http://${host}:85/rest/ip/hotspot/user/${encodeURIComponent(email)}`, {
           method: 'PATCH',
@@ -86,12 +79,11 @@ export async function POST({ request }) {
           body: JSON.stringify({ password: email })
         });
       } else {
-        console.error('❌ MikroTik error:', text);
-        throw new Error('Failed to create/update MikroTik user');
+        throw new Error('Failed to create or update MikroTik user');
       }
     }
 
-    // 🔁 Auto-login redirect via hidden form
+    // Auto-login form redirect
     return new Response(
       `
       <html>
@@ -111,7 +103,6 @@ export async function POST({ request }) {
       { headers: { 'Content-Type': 'text/html' } }
     );
   } catch (err) {
-    console.error('💥 Error in register handler:', err);
     return json({ success: false, error: err.message }, { status: 500 });
   }
 }
