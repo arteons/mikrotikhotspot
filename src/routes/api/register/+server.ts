@@ -5,26 +5,41 @@ import { createClient } from '@supabase/supabase-js';
 
 export async function POST({ request }) {
   try {
-    const data = await request.formData();
-    const email = data.get('email') as string | null;
-    const whatsapp = data.get('whatsapp') as string | null;
-    const mac = data.get('mac') as string | null;
-    const ip = data.get('ip') as string | null;
-    const link_login = data.get('link_login') as string | null;
+    // 🔍 Detect whether data comes from JSON or form
+    const contentType = request.headers.get('content-type') || '';
+    let email, whatsapp, mac, ip, link_login;
 
-    // Supabase service client
+    if (contentType.includes('application/json')) {
+      const data = await request.json();
+      ({ email, whatsapp, mac, ip, link_login } = data);
+    } else if (
+      contentType.includes('multipart/form-data') ||
+      contentType.includes('application/x-www-form-urlencoded')
+    ) {
+      const data = await request.formData();
+      email = data.get('email');
+      whatsapp = data.get('whatsapp');
+      mac = data.get('mac');
+      ip = data.get('ip');
+      link_login = data.get('link_login');
+    } else {
+      return json({ success: false, error: 'Unsupported content type' }, { status: 400 });
+    }
+
+    // 🧩 Insert contact record into Supabase
     const supabase = createClient(
       publicEnv.PUBLIC_SUPABASE_URL!,
       privateEnv.PRIVATE_SUPABASE_SERVICE_KEY!
     );
+
     await supabase.from('cat_hotspot_contacts').insert([{ email, whatsapp, mac, ip }]);
 
-    // MikroTik auth setup
-    const auth = Buffer.from(`${privateEnv.MIKROTIK_USER}:${privateEnv.MIKROTIK_PASS}`).toString('base64');
+    // 🔐 MikroTik credentials
     const host = privateEnv.MIKROTIK_HOST;
+    const auth = Buffer.from(`${privateEnv.MIKROTIK_USER}:${privateEnv.MIKROTIK_PASS}`).toString('base64');
     if (!host) throw new Error('Missing MIKROTIK_HOST');
 
-    // Create hotspot user
+    // ➕ Create user on MikroTik
     const userPayload = {
       name: email || whatsapp || mac,
       password: mac || 'autogen',
@@ -33,7 +48,7 @@ export async function POST({ request }) {
       comment: 'Auto captive portal registration'
     };
 
-    const createResp = await fetch(`http://${host}:85/rest/ip/hotspot/user`, {
+    const userResp = await fetch(`http://${host}:85/rest/ip/hotspot/user`, {
       method: 'PUT',
       headers: {
         Authorization: `Basic ${auth}`,
@@ -42,12 +57,12 @@ export async function POST({ request }) {
       body: JSON.stringify(userPayload)
     });
 
-    if (!createResp.ok) {
-      console.error('❌ Failed to create user:', await createResp.text());
+    if (!userResp.ok) {
+      console.error('❌ Failed to create user:', await userResp.text());
       throw new Error('Failed to create user on MikroTik');
     }
 
-    // Force login if mac/ip present
+    // ⚡ Try immediate auto-login
     if (mac && ip) {
       const activePayload = {
         user: email || whatsapp || mac,
@@ -66,10 +81,11 @@ export async function POST({ request }) {
 
       if (!activeResp.ok) {
         console.warn('⚠️ Auto-login failed:', await activeResp.text());
+        // fallback handled below
       }
     }
 
-    // Redirect to MikroTik login (optional)
+    // 🔁 Always redirect to MikroTik login as fallback
     if (link_login) {
       throw redirect(
         302,
