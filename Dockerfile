@@ -4,14 +4,16 @@
     FROM node:20-alpine AS builder
     WORKDIR /app
     
-    # Copy package files and install dependencies
+    # Accept build-time environment variables
+    ARG PUBLIC_SUPABASE_URL
+    ARG PUBLIC_SUPABASE_ANON_KEY
+    ENV PUBLIC_SUPABASE_URL=$PUBLIC_SUPABASE_URL
+    ENV PUBLIC_SUPABASE_ANON_KEY=$PUBLIC_SUPABASE_ANON_KEY
+    
     COPY package*.json ./
     RUN npm ci
-    
-    # Copy all source code
     COPY . .
     
-    # Build the SvelteKit app
     RUN npm run build
     
     # -----------------------------
@@ -20,20 +22,20 @@
     FROM node:20-alpine
     WORKDIR /app
     
-    # Copy only necessary build output
+    # Copy necessary build output
     COPY --from=builder /app/package*.json ./
     COPY --from=builder /app/build ./build
     
-    # Install only production dependencies
+    # Set env vars again for runtime
+    ARG PUBLIC_SUPABASE_URL
+    ARG PUBLIC_SUPABASE_ANON_KEY
+    ENV PUBLIC_SUPABASE_URL=$PUBLIC_SUPABASE_URL
+    ENV PUBLIC_SUPABASE_ANON_KEY=$PUBLIC_SUPABASE_ANON_KEY
+    
     RUN npm ci --omit=dev
     
-    # Environment variables (can be overridden in Coolify)
     ENV PORT=3000
-    ENV NODE_ENV=production
-    
-    # Expose the app port
     EXPOSE 3000
     
-    # Start the SvelteKit app
     CMD ["node", "build"]
     
