@@ -58,7 +58,7 @@ export async function POST({ request }) {
       comment: 'Auto captive portal registration'
     };
 
-    const createResp = await fetch(`http://${host}:85/rest/ip/hotspot/user`, {
+    const createResp = await fetch(`http://${host}/rest/ip/hotspot/user`, {
       method: 'PUT',
       headers: {
         Authorization: `Basic ${auth}`,
@@ -70,7 +70,7 @@ export async function POST({ request }) {
     if (!createResp.ok) {
       const text = await createResp.text();
       if (text.includes('already have user')) {
-        await fetch(`http://${host}:85/rest/ip/hotspot/user/${encodeURIComponent(email)}`, {
+        await fetch(`http://${host}/rest/ip/hotspot/user/${encodeURIComponent(email)}`, {
           method: 'PATCH',
           headers: {
             Authorization: `Basic ${auth}`,
